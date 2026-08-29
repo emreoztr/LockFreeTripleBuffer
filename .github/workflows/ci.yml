@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows (MSVC) - ${{ matrix.build_type }}
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, Debug]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Configure CMake
+        run: >
+          cmake -B build
+          -A x64
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build All Targets (Header, C++20 Module & Tests)
+        run: >
+          cmake --build build
+          --config ${{ matrix.build_type }}
+          --parallel
+
+      - name: Run Tests via CTest
+        run: >
+          ctest --test-dir build
+          -C ${{ matrix.build_type }}
+          --output-on-failure
+          --verbose
+
+  linux:
+    name: Linux (${{ matrix.compiler.cxx }}) - ${{ matrix.build_type }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - cc: gcc
+            cxx: g++
+          - cc: clang
+            cxx: clang++
+        build_type: [Release, Debug]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure CMake
+        env:
+          CC: ${{ matrix.compiler.cc }}
+          CXX: ${{ matrix.compiler.cxx }}
+        run: >
+          cmake -B build
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build All Targets
+        run: cmake --build build --parallel
+
+      - name: Run Tests via CTest
+        run: ctest --test-dir build --output-on-failure --verbose
+
